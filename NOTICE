@@ -1,29 +1,14 @@
+Kavita 软件与标志
+================
+
+本插件打包并运行 Kavita（https://github.com/kareadita/Kavita），上游程序以 GPL-3.0 许可证发布。
+`docker-compose.yml` 引用的镜像是上游官方镜像 jvmilazz0/kavita，未做修改。
+
 图标
-====
+----
 
-`icon.svg` 为本仓库原创，按插件规范的线条风格手写，未用图片模型生成。从模板新建的插件换成自己的图标时，这里按实际情况重写。
+`icon.svg` 来自 Kavita 官方仓库的 Logo/kavita.svg（develop 分支，
+https://github.com/kareadita/Kavita/blob/develop/Logo/kavita.svg），原样使用：只去掉了
+SVG 声明、DOCTYPE 和生成器注释，并在标志后面加了白色底以填满方形画布，没有改色或变形。
 
-许可证
-------
-
-MIT License
-
-Copyright (c) 2026 Wonton plugin authors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Kavita 名称、标志和吉祥物是 Kavita 项目的商标/标识，本插件与 Kavita 官方没有隶属或背书关系。
