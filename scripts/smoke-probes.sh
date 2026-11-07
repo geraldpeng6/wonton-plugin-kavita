@@ -16,11 +16,48 @@ kavita_marker() { printf '%s/.smoke-marker' "$(kavita_dir)"; }
 
 kavita_log_dump() { echo "== kavita 容器日志"; docker logs "$(docker ps --format '{{.Names}}' | grep -m1 'kavita')" 2>&1 | grep -iE "error|exception|fail|warn" | tail -12; }
 
-kavita_session() { # 走到 Kavita 的 form_post 自动表单，替浏览器提交，会话落在本地 jar 并验证
-  local jar page rc="0" action args=() input n v me
+kavita_absorb() { # 把响应头里的 Set-Cookie 写进 jar，Secure 一律清成 FALSE：
+  # ASP.NET 的关联 Cookie 固定带 Secure，http 响应上 curl 会直接丢弃它，OIDC 回调就报 Correlation failed
+  local jar="$1" req="$2" hdrs="$3" host cookie pair name value rest attr path exp httponly
+  host="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.urlparse(sys.argv[1]).hostname)' "$req")"
+  while IFS= read -r cookie; do
+    cookie="${cookie#*:}"
+    cookie="${cookie# }"
+    pair="${cookie%%;*}"
+    name="${pair%%=*}"
+    value="${pair#*=}"
+    [[ -n "$name" && "$name" != "$pair" ]] || continue
+    path="/" exp="0" httponly=""
+    rest="${cookie#*;}"
+    if [[ "$rest" != "$cookie" ]]; then
+      while IFS= read -r attr; do
+        attr="${attr# }"
+        case "${attr,,}" in
+          path=*) path="${attr#*=}" ;;
+          max-age=*) exp=$(( $(date +%s) + ${attr#*=} )) ;;
+          httponly) httponly="#HttpOnly_" ;;
+        esac
+      done < <(tr ';' '\n' <<<"$rest")
+    fi
+    printf '%s%s\tTRUE\t%s\tFALSE\t%s\t%s\t%s\n' "$httponly" "$host" "$path" "$exp" "$name" "$value" >>"$jar"
+  done < <(grep -i '^set-cookie:' "$hdrs")
+}
+
+kavita_session() { # 走 Kavita 的 OIDC 挑战并替浏览器提交 form_post，会话落在本地 jar 并验证
+  local jar hdrs loc page action args=() input n v me
   jar="$(kavita_jar)"
-  page="$(dweb --sso /oidc/login -L -b "$jar" -c "$jar")" || rc=$?
-  if [[ $rc -ne 0 ]]; then echo "OIDC 链失败 rc=$rc：$(head -c 150 <<<"$page")"; kavita_log_dump; return 1; fi
+  dweb --sso / >/dev/null || { echo "核心会话建立失败"; kavita_log_dump; return 1; }
+  # 挑战这一跳不跟 -L 也不写 jar：先把它的 Set-Cookie 补进 jar（Secure 清成 FALSE），再从重定向继续走链
+  hdrs="$(mktemp)"
+  loc="$(curl -sS --noproxy '*' -D "$hdrs" -o /dev/null -w '%{redirect_url}' -b "$jar" \
+    -H 'Accept: text/html' "$SMOKE_WEB_URL/oidc/login")" ||
+    { echo "OIDC 挑战请求失败"; rm -f "$hdrs"; kavita_log_dump; return 1; }
+  kavita_absorb "$jar" "$SMOKE_WEB_URL/oidc/login" "$hdrs"
+  rm -f "$hdrs"
+  [[ -n "$loc" ]] || { echo "OIDC 挑战没有重定向"; kavita_log_dump; return 1; }
+  loc="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.urljoin(sys.argv[1],sys.argv[2]))' "$SMOKE_WEB_URL/oidc/login" "$loc")"
+  page="$(curl -sS --noproxy '*' -L -b "$jar" -c "$jar" -H 'Accept: text/html' "$loc")" ||
+    { echo "OIDC 链失败：$(head -c 150 <<<"$page")"; kavita_log_dump; return 1; }
   action="$(sed -n 's/.*action="\([^"]*\)".*/\1/p' <<<"$page" | head -1)"
   if [[ -n "$action" ]]; then
     # ASP.NET 的 noscript 兜底块会把同名字段重复一遍：按 name 取第一次出现的，跳过没有名字的
@@ -31,6 +68,7 @@ kavita_session() { # 走到 Kavita 的 form_post 自动表单，替浏览器提�
       declare "seen_$n=1"
       args+=(--data-urlencode "$n=$v")
     done < <(grep -oE '<input[^>]*>' <<<"$page")
+    action="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.urljoin(sys.argv[1],sys.argv[2]))' "$loc" "$action")"
     page="$(curl -sS --noproxy '*' -L -b "$jar" -c "$jar" -H 'Accept: text/html' "${args[@]}" "$action")" ||
       { echo "signin-oidc 表单提交失败：$(head -c 150 <<<"$page")"; kavita_log_dump; return 1; }
   fi
