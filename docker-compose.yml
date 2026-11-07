@@ -29,6 +29,10 @@ services:
       # Kavita 在非 Development 模式把 OIDC 回调地址强制改写成 https（OpenIdConnectEventsHelper），
       # 和核心登记的 http 回调对不上，登录会失败。副作用的 JWT 随机密钥由 oidc-config 写入 TokenKey 补上。
       ASPNETCORE_ENVIRONMENT: Development
+      # 启动时从 GitHub 下载邮件模板，走核心的出网代理；.NET 的 HttpClient 读这组环境变量。
+      HTTP_PROXY: ${WONTON_PROXY_URL:-}
+      HTTPS_PROXY: ${WONTON_PROXY_URL:-}
+      NO_PROXY: localhost,127.0.0.1
     volumes:
       - ${WONTON_APP_DATA}/config:/kavita/config
       - ${WONTON_SHARE_MEDIA}:/media:ro
