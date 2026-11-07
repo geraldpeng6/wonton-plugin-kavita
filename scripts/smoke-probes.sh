@@ -45,14 +45,15 @@ kavita_absorb() { # 把响应头里的 Set-Cookie 写进 jar，Secure 一律清�
 }
 
 kavita_walk() { # 学 scripts/dev.sh 的 sso_form_login：逐段跟链，碰到隐藏字段的 POST 表单就替浏览器提交
-  local jar="$1" url="$2" method="GET" data="" form
+  local jar="$1" url="$2" page_file method="GET" data="" form
+  page_file="$(mktemp)"
   for _ in 1 2 3 4 5 6 7 8; do
     if [[ "$method" == GET ]]; then
-      curl -sS --noproxy '*' -L -b "$jar" -c "$jar" -H 'Accept: text/html' -o /dev/null "$url" || return 1
+      curl -sS --noproxy '*' -L -b "$jar" -c "$jar" -H 'Accept: text/html' -o "$page_file" "$url" || { rm -f "$page_file"; return 1; }
     else
-      curl -sS --noproxy '*' -L -b "$jar" -c "$jar" -H 'Accept: text/html' --data "$data" -o /dev/null "$url" || return 1
+      curl -sS --noproxy '*' -L -b "$jar" -c "$jar" -H 'Accept: text/html' --data "$data" -o "$page_file" "$url" || { rm -f "$page_file"; return 1; }
     fi
-    form="$(KAVITA_FORM_URL="$url" python3 <<'PY'
+    form="$(KAVITA_FORM_URL="$url" python3 - "$page_file" <<'PY'
 from html.parser import HTMLParser
 from urllib.parse import urlencode, urljoin
 import os, sys
@@ -80,19 +81,28 @@ class Forms(HTMLParser):
             self.current = None
 
 parser = Forms()
-parser.feed(sys.stdin.read())
+with open(sys.argv[1], encoding="utf-8", errors="replace") as page:
+    parser.feed(page.read())
 for form in parser.forms:
     if form["method"] == "post" and form["fields"]:
+        # ASP.NET 的 noscript 兜底块会把同名字段重复一遍：按 name 去重，取第一次出现的
+        seen = set()
+        fields = []
+        for name, value in form["fields"]:
+            if name not in seen:
+                seen.add(name)
+                fields.append((name, value))
         print(urljoin(os.environ["KAVITA_FORM_URL"], form["action"]))
-        print(urlencode(form["fields"]))
+        print(urlencode(fields))
         break
 PY
-)" || return 1
-    [[ -n "$form" ]] || return 0
+)" || { rm -f "$page_file"; return 1; }
+    [[ -n "$form" ]] || { rm -f "$page_file"; return 0; }
     url="${form%%$'\n'*}"
     data="${form#*$'\n'}"
     method="POST"
   done
+  rm -f "$page_file"
   return 1
 }
 
