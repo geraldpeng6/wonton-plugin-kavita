@@ -109,7 +109,9 @@ x-wonton:
       # Kavita 用 ASP.NET 的 OIDC 处理器，回调路径是固定的。
       # 登出回跳 /signout-callback-oidc 依赖规范草案的 post_logout_paths，发布版核心还没收，
       # Kavita 里点登出会被身份提供方拒绝；单点登录的会话由核心管，影响记在 PR 和 platform-gaps。
+      # .NET 的 OIDC 处理器把客户端密钥放在令牌请求体里（client_secret_post），Hydra 默认只收 basic。
       redirect_paths: [/signin-oidc]
+      token_endpoint_auth_method: client_secret_post
   secrets:
     owner_password:
       generate: { bytes: 32 }
