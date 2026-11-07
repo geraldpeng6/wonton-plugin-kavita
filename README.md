@@ -1,31 +1,15 @@
-# 云吞插件模板
+# 云吞插件：Kavita
 
-开发流程见[插件开发指南](https://github.com/geraldpeng6/wonton-docs/blob/main/develop.md)。
+[Kavita](https://www.kavitareader.com) 是自托管的漫画和电子书阅读服务器。这个插件把它装进云吞：
+登录走云吞账号（单点登录），打开就是自己的书架；媒体放在共享文件夹 `media` 里，入库扫描只读访问。
 
-这是一个能安装的示例插件 `app.example.hello`：使用 nginx 官方镜像显示问候页，经网关的 `sso: proxy` 注入用户名，页面显示“你好，<用户名>”。示例没有应用账号、持久化数据或 MCP 工具。
+安装后第一次打开，插件会用你的云吞用户名和邮箱在 Kavita 里建好管理员账号并打开自动登录，
+你不会看到 Kavita 自己的登录页。管理员密码由云吞生成保管，正常使用用不到；想直接登 Kavita
+时可以在插件详情里看说明。
 
-## 示例文件
+## 说明
 
-| 路径 | 内容 |
-| --- | --- |
-| `docker-compose.yml` | 示例清单、nginx 服务和三个 `configs` |
-| `web/default.conf.template` | nginx 配置，启用 SSI 回显用户名并提供健康检查入口；只放行来自核心地址（`${WONTON_CORE_ADDRESS}`）的请求，其余来源 403 |
-| `web/index.html` | 问候页 |
-| `web/tokens.css` | 页面主题变量的后备值 |
-| `tabs/` | 示例主页的底栏图标 |
-| `screenshots/home.png` | 商店详情页的示例截图 |
-| `scripts/smoke-probes.sh` | 检查真实页面和网关注入身份的插件探针 |
-
-从模板创建自己的插件后，替换示例清单、网页和素材；具体步骤见[写插件](https://github.com/geraldpeng6/wonton-docs/blob/main/develop.md#写插件)。
-
-## 更新开发套件
-
-```bash
-scripts/dev.sh kit-update
-```
-
-在从模板新建的插件仓库中更新套件；本仓库是套件源头，执行时只提示并退出。版本、可选引用和自定义脚本约定见[开发指南](https://github.com/geraldpeng6/wonton-docs/blob/main/develop.md#更新开发套件)。
-
-## 图标
-
-`icon.svg` 是本仓库原创线条图标，按本仓库 MIT 许可证分发，见 [NOTICE](NOTICE)。
+- 媒体文件：放进共享文件夹 `media`，在 Kavita 网页里建书库时选择 `/media` 下的目录。
+- 图标使用 Kavita 官方标志（原样使用，仅加白色底），来源和许可见 [NOTICE](NOTICE)。
+- 开发流程见[插件开发指南](https://github.com/geraldpeng6/wonton-docs/blob/main/develop.md)，
+  规则见[插件规范](https://github.com/geraldpeng6/wonton-docs/blob/main/plugin-spec.md)。
