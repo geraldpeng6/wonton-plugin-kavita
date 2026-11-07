@@ -17,7 +17,9 @@ oidc = {
     "Authority": os.environ["WONTON_OIDC_ISSUER"],
     "ClientId": os.environ["WONTON_OIDC_CLIENT_ID"],
     "Secret": os.environ["WONTON_OIDC_CLIENT_SECRET"],
-    "CustomScopes": [],
+    # Hydra 的 discovery scopes_supported 只有 openid/offline 系列，Kavita 会按它过滤掉
+    # profile/email/groups；CustomScopes 无条件追加（上游 GetValidScopes），认人的 email 靠这里要回来。
+    "CustomScopes": ["profile", "email", "groups"],
 }
 
 # ASPNETCORE_ENVIRONMENT=Development 时 Kavita 不自动生成 TokenKey，这里固定给一个随机值。
