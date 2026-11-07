@@ -6,13 +6,14 @@
 # 工具：Kavita 没有声明 MCP，不写 mcp_check。
 # 数据：data_write 用随机标记建一个阅读列表，data_check 升级/重装后读回核对。
 #
-# 会话 jar 和数据标记都放在本插件 checkout 目录里（由 BASH_SOURCE 推导），不依赖 harness 的
-# SMOKE_JAR/SMOKE_STATE：e2e 的 identity_check 不经 run_hook，这些变量未导出（set -u 直接退出）。
+# 会话 jar 用 harness 的 SMOKE_JAR（probes_env 已导出，dweb 也写它，全链必须同一份）；
+# 读不到时（老 harness 直接调 identity_check）退回 checkout 目录里自管的一份。数据标记自管。
 # SMOKE_OWNER 有值就断言用户名，没有就退化为断言是管理员。
 
 kavita_dir() { printf '%s' "${BASH_SOURCE[0]%/*}"; }
-kavita_jar() { printf '%s/.smoke-cookies' "$(kavita_dir)"; }
+kavita_jar() { printf '%s' "${SMOKE_JAR:-$(kavita_dir)/.smoke-cookies}"; }
 kavita_marker() { printf '%s/.smoke-marker' "$(kavita_dir)"; }
+kavita_web_url() { printf '%s' "${SMOKE_WEB_URL:-http://$SMOKE_SLUG.${SMOKE_BASE#http://}}"; }
 
 kavita_log_dump() { echo "== kavita 容器日志"; docker logs "$(docker ps --format '{{.Names}}' | grep -m1 'kavita')" 2>&1 | grep -iE "error|exception|fail|warn" | tail -12; }
 
@@ -43,38 +44,75 @@ kavita_absorb() { # 把响应头里的 Set-Cookie 写进 jar，Secure 一律清�
   done < <(grep -i '^set-cookie:' "$hdrs")
 }
 
-kavita_session() { # 走 Kavita 的 OIDC 挑战并替浏览器提交 form_post，会话落在本地 jar 并验证
-  local jar hdrs loc page action args=() input n v me
+kavita_walk() { # 学 scripts/dev.sh 的 sso_form_login：逐段跟链，碰到隐藏字段的 POST 表单就替浏览器提交
+  local jar="$1" url="$2" method="GET" data="" form
+  for _ in 1 2 3 4 5 6 7 8; do
+    if [[ "$method" == GET ]]; then
+      curl -sS --noproxy '*' -L -b "$jar" -c "$jar" -H 'Accept: text/html' -o /dev/null "$url" || return 1
+    else
+      curl -sS --noproxy '*' -L -b "$jar" -c "$jar" -H 'Accept: text/html' --data "$data" -o /dev/null "$url" || return 1
+    fi
+    form="$(KAVITA_FORM_URL="$url" python3 <<'PY'
+from html.parser import HTMLParser
+from urllib.parse import urlencode, urljoin
+import os, sys
+
+class Forms(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.current = None
+        self.forms = []
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == "form" and self.current is None:
+            self.current = {"action": a.get("action", ""),
+                            "method": a.get("method", "post").lower(),
+                            "fields": []}
+        elif tag == "input" and self.current is not None:
+            name = a.get("name")
+            if name and a.get("type", "text").lower() == "hidden":
+                self.current["fields"].append((name, a.get("value", "")))
+
+    def handle_endtag(self, tag):
+        if tag == "form" and self.current is not None:
+            self.forms.append(self.current)
+            self.current = None
+
+parser = Forms()
+parser.feed(sys.stdin.read())
+for form in parser.forms:
+    if form["method"] == "post" and form["fields"]:
+        print(urljoin(os.environ["KAVITA_FORM_URL"], form["action"]))
+        print(urlencode(form["fields"]))
+        break
+PY
+)" || return 1
+    [[ -n "$form" ]] || return 0
+    url="${form%%$'\n'*}"
+    data="${form#*$'\n'}"
+    method="POST"
+  done
+  return 1
+}
+
+kavita_session() { # 走 Kavita 的 OIDC 挑战、替浏览器提交沿途自动表单（含 form_post），会话落在本地 jar 并验证
+  local jar hdrs loc me
   jar="$(kavita_jar)"
   dweb --sso / >/dev/null || { echo "核心会话建立失败"; kavita_log_dump; return 1; }
   # 挑战这一跳不跟 -L 也不写 jar：先把它的 Set-Cookie 补进 jar（Secure 清成 FALSE），再从重定向继续走链
   hdrs="$(mktemp)"
   loc="$(curl -sS --noproxy '*' -D "$hdrs" -o /dev/null -w '%{redirect_url}' -b "$jar" \
-    -H 'Accept: text/html' "$SMOKE_WEB_URL/oidc/login")" ||
+    -H 'Accept: text/html' "$(kavita_web_url)/oidc/login")" ||
     { echo "OIDC 挑战请求失败"; rm -f "$hdrs"; kavita_log_dump; return 1; }
-  kavita_absorb "$jar" "$SMOKE_WEB_URL/oidc/login" "$hdrs"
+  kavita_absorb "$jar" "$(kavita_web_url)/oidc/login" "$hdrs"
   rm -f "$hdrs"
   [[ -n "$loc" ]] || { echo "OIDC 挑战没有重定向"; kavita_log_dump; return 1; }
-  loc="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.urljoin(sys.argv[1],sys.argv[2]))' "$SMOKE_WEB_URL/oidc/login" "$loc")"
-  page="$(curl -sS --noproxy '*' -L -b "$jar" -c "$jar" -H 'Accept: text/html' "$loc")" ||
-    { echo "OIDC 链失败：$(head -c 150 <<<"$page")"; kavita_log_dump; return 1; }
-  action="$(sed -n 's/.*action="\([^"]*\)".*/\1/p' <<<"$page" | head -1)"
-  if [[ -n "$action" ]]; then
-    # ASP.NET 的 noscript 兜底块会把同名字段重复一遍：按 name 取第一次出现的，跳过没有名字的
-    while IFS= read -r input; do
-      n="$(sed -E 's/.*name="([^"]*)".*/\1/' <<<"$input")"
-      v="$(sed -E 's/.*value="([^"]*)".*/\1/' <<<"$input")"
-      [[ -n "$n" && ! -v "seen_$n" ]] || continue
-      declare "seen_$n=1"
-      args+=(--data-urlencode "$n=$v")
-    done < <(grep -oE '<input[^>]*>' <<<"$page")
-    action="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.urljoin(sys.argv[1],sys.argv[2]))' "$loc" "$action")"
-    page="$(curl -sS --noproxy '*' -L -b "$jar" -c "$jar" -H 'Accept: text/html' "${args[@]}" "$action")" ||
-      { echo "signin-oidc 表单提交失败：$(head -c 150 <<<"$page")"; kavita_log_dump; return 1; }
-  fi
+  loc="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.urljoin(sys.argv[1],sys.argv[2]))' "$(kavita_web_url)/oidc/login" "$loc")"
+  kavita_walk "$jar" "$loc" || { echo "OIDC 链没走完"; kavita_log_dump; return 1; }
   # 落点页面含 Kavita 字样不代表会话建好（登录页也有）：用当前用户接口确认真登录了
   me="$(dweb /api/account -b "$jar")" || {
-    echo "会话没建好（/api/account 失败）：$(head -c 200 <<<"$me")；表单后落点：$(head -c 150 <<<"$page")"
+    echo "会话没建好（/api/account 失败）：$(head -c 200 <<<"$me")"
     kavita_log_dump
     return 1
   }
