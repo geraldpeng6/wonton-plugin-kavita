@@ -49,7 +49,8 @@ services:
       start_interval: 5s
 
   # 第一个注册用户自动是管理员，而 OIDC 预置的用户拿不到管理员角色（默认 DefaultRoles 为空），
-  # 这里用官方接口注册管理员并打开自动登录。等 Kavita 健康后跑，重跑幂等。
+  # 这里用官方接口注册管理员、代填 SMTP（Kavita 只能经设置接口写库）并把账号邮箱对齐到内部地址。
+  # 等 Kavita 健康后跑，重跑幂等。
   init:
     image: python:3.13-alpine@sha256:1e1f6334529d1fb26a2ef619d7cffb30a7c7d7cc1cc7338ebee283a58d1aeaca
     command: ["python3", "/seed/init-owner.py"]
@@ -59,6 +60,12 @@ services:
       WONTON_OWNER_NAME: ${WONTON_OWNER_NAME}
       WONTON_OWNER_EMAIL: ${WONTON_OWNER_EMAIL:?}
       WONTON_SECRET_OWNER_PASSWORD: ${WONTON_SECRET_OWNER_PASSWORD}
+      # Kavita 的 SMTP 只能经设置接口写进数据库，没有环境变量；由这里代填。
+      WONTON_SMTP_HOST: ${WONTON_SMTP_HOST:?}
+      WONTON_SMTP_PORT: ${WONTON_SMTP_PORT:?}
+      WONTON_MAIL_FROM: ${WONTON_MAIL_FROM:?}
+      # Kavita 的 HostName（邮件里的链接地址，也算"邮件已配置"的一项）用插件的公开地址。
+      WONTON_APP_URL: ${WONTON_APP_URL}
     configs:
       - source: init_owner
         target: /seed/init-owner.py
@@ -74,9 +81,9 @@ configs:
     file: config/init-owner.py
 
 x-wonton:
-  spec: "0.6"
+  spec: "0.11"
   id: com.kavitareader.kavita
-  version: 0.1.0
+  version: 0.2.0
   kind: app
   title: { zh: 漫画电子书架（Kavita）, en: Comics & E-Book Reader (Kavita) }
   description:
@@ -97,18 +104,25 @@ x-wonton:
 
       登录走云吞的账号，打开就是你的书架；局域网里的书放进共享文件夹就能入库。
 
+      应用发的信（找回密码、邀请、Send To 设备）会出现在收件人的「Wonton」私聊里；发给外部地址
+      （比如 Kindle）会发送失败。
+
       需要访问外网：检查更新、外部元数据和 Kavita+ 都要连出去，书库本身不受影响。
 
-      云吞升级后会自动重新接好账号。目前在浏览器里打开会登录不进去，这是已知问题，修好之前暂时用不了（https://github.com/wontonapp/wonton/issues/154）。
+      云吞升级后会自动重新接好账号。
     en: |
       Organize comics and e-books into libraries; the web reader remembers your page so you can pick up on the phone.
 
       You sign in with your Wonton account and land straight on your shelves. Books in the shared folder get picked up by the scanner.
 
+      Emails the app sends (password resets, invites, Send To) land in the recipient's Wonton chat; external addresses (like Kindle) fail to send.
+
       Needs internet access: update checks, external metadata and Kavita+ reach the network; your library works offline.
 
-      After a Wonton upgrade, your account is reconnected automatically. For now, opening it in a browser won't sign you in — this is a known issue, and it won't be usable in the browser until it's fixed (https://github.com/wontonapp/wonton/issues/154).
-  release_notes: { zh: 首个版本。, en: First release. }
+      After a Wonton upgrade, your account is reconnected automatically.
+  release_notes:
+    zh: 接入云吞内部邮箱：找回密码、邀请、Send To 等邮件自动转到收件人的「Wonton」私聊，不用再填 SMTP；发给外部地址（如 Kindle）会失败。
+    en: "Connects to the Wonton internal mailbox: password resets, invites and Send To emails are relayed into the recipient's Wonton chat with no SMTP setup; external addresses (like Kindle) fail to send."
   webui:
     service: kavita
     port: 5000
@@ -132,6 +146,8 @@ x-wonton:
     # 用用户名和邮箱注册 Kavita 管理员（OIDC 按邮箱关联账号）。
     - owner.identity
     - storage.share.media:read
+    # 发信：把 Kavita 的 SMTP 配到核心内部邮箱，找回密码、邀请、Send To 转进收件人的「Wonton」私聊。
+    - notify
     # ASPNETCORE_ENVIRONMENT=Development 的 CORS 分支启动时用 8.8.8.8 探测本机 IP（只查路由不发包），
     # 插件网络没有默认路由会崩，所以要能出网；Kavita 的更新检查和外部元数据也走这里。
     - network.egress

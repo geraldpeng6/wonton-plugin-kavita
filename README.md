@@ -10,6 +10,8 @@
 ## 说明
 
 - 媒体文件：放进共享文件夹 `media`，在 Kavita 网页里建书库时选择 `/media` 下的目录。
+- 应用发的信（找回密码、邀请、Send To 设备）会出现在收件人的「Wonton」私聊里，SMTP 已自动配好。
+  收件人只能是家里人：发给外部地址（比如 Kindle 的 @kindle.com）在发送时就失败。
 
 - 换核心时容器会重建。浏览器里的单点登录走不完回调：OIDC 回调是跨站 POST，被网关的会话校验挡住回 401
   ——核心侧修（[wontonapp/wonton#154](https://github.com/wontonapp/wonton/issues/154)，改法见

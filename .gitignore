@@ -1,6 +1,6 @@
 # 开发环境：设置、密钥和数据（scripts/dev.sh），不提交。
 /.wonton/
 verify-init.sh
-verify-init.sh
 verify-out.log
 kavita-smoke.log
+__pycache__/
