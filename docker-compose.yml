@@ -98,12 +98,16 @@ x-wonton:
       登录走云吞的账号，打开就是你的书架；局域网里的书放进共享文件夹就能入库。
 
       需要访问外网：检查更新、外部元数据和 Kavita+ 都要连出去，书库本身不受影响。
+
+      换核心时容器会按新的签发方自动重建；不过浏览器里的单点登录现在走不完回调，网关回 401（表单 POST 是跨站请求，带不上登录状态），修好之前打不开。
     en: |
       Organize comics, e-books and audiobooks into libraries; the web reader remembers your page so you can pick up on the phone.
 
       You sign in with your Wonton account and land straight on your shelves. Books in the shared folder get picked up by the scanner.
 
       Needs internet access: update checks, external metadata and Kavita+ reach the network; your library works offline.
+
+      Containers are rebuilt with the new issuer when the core is upgraded, but the browser sign-in currently can't finish the callback: the gateway answers 401 because the form POST is a cross-site request that carries no sign-in state.
   release_notes: { zh: 首个版本。, en: First release. }
   webui:
     service: kavita
