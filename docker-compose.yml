@@ -78,10 +78,10 @@ x-wonton:
   id: com.kavitareader.kavita
   version: 0.1.0
   kind: app
-  title: { en: Kavita }
+  title: { zh: 漫画电子书架（Kavita）, en: Comics & E-Book Reader (Kavita) }
   description:
-    zh: 漫画和电子书阅读服务器，手机上接着读
-    en: Comics and e-book server that keeps your place on the phone
+    zh: 像漫画 App 的书架：漫画和电子书放进去，网页里翻页看，读到哪一页自动记住，换手机接着读。漫画、小说都爱看的人选它。
+    en: "Like a manga app's bookshelf: add comics and e-books, read them in the browser, and it remembers your page so you can pick up on your phone. For people who read both manga and novels."
   icon: icon.svg
   notices: [NOTICE]
   screenshots: [screenshots/home.png, screenshots/library.png, screenshots/series.png, screenshots/reader.png]
