@@ -93,21 +93,24 @@ x-wonton:
     en: [Reading, Comics]
   about:
     zh: |
-      把漫画、电子书和有声书整理成书库，网页阅读器翻页、缩放、记住进度，手机接着读。
+      把漫画和电子书整理成书库，网页阅读器翻页、缩放、记住进度，手机接着读。
 
       登录走云吞的账号，打开就是你的书架；局域网里的书放进共享文件夹就能入库。
 
       需要访问外网：检查更新、外部元数据和 Kavita+ 都要连出去，书库本身不受影响。
 
-      换核心时容器会按新的签发方自动重建；不过浏览器里的单点登录现在走不完回调，网关回 401（表单 POST 是跨站请求，带不上登录状态），修好之前打不开。
+      换核心时容器会按新的签发方自动重建。浏览器里的单点登录走不完回调，是已知问题，等核心修复
+      （https://github.com/wontonapp/wonton/issues/154），修好之前打不开。
     en: |
-      Organize comics, e-books and audiobooks into libraries; the web reader remembers your page so you can pick up on the phone.
+      Organize comics and e-books into libraries; the web reader remembers your page so you can pick up on the phone.
 
       You sign in with your Wonton account and land straight on your shelves. Books in the shared folder get picked up by the scanner.
 
       Needs internet access: update checks, external metadata and Kavita+ reach the network; your library works offline.
 
-      Containers are rebuilt with the new issuer when the core is upgraded, but the browser sign-in currently can't finish the callback: the gateway answers 401 because the form POST is a cross-site request that carries no sign-in state.
+      Containers are rebuilt with the new issuer when the core is upgraded. The browser sign-in can't finish
+      the callback — known issue, core-side fix tracked at https://github.com/wontonapp/wonton/issues/154; it
+      won't open until then.
   release_notes: { zh: 首个版本。, en: First release. }
   webui:
     service: kavita
