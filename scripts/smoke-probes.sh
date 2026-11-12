@@ -4,7 +4,10 @@
 # 页面：web_assert 从标准输入读页面，命中的确是应用的真实页面时返回 0。
 # 身份：identity_check 走完 OIDC 链后用 Kavita 自己的“当前用户”接口断言认出的是主人管理员。
 # 工具：Kavita 没有声明 MCP，不写 mcp_check。
-# 数据：data_write 用随机标记建一个阅读列表，data_check 升级/重装后读回核对。
+# 数据：data_write 用随机标记建一个阅读列表（PR 版本还把管理员邮箱改成外部地址，模拟老值），
+# data_check 升级/重装后读回核对（邮箱应被 init 的一次性对账改回内部地址）。
+# 附加检查 extra_check（邮件专项）：核对 SMTP 配置是核心注入的值，真发一封测试信（应用报成功、
+# 邮件历史记 Sent），再把收件人换成外部地址验证应用报发送失败。
 #
 # 会话 jar 用 harness 的 SMOKE_JAR（probes_env 已导出，dweb 也写它，全链必须同一份）；
 # 读不到时（老 harness 直接调 identity_check）退回 checkout 目录里自管的一份。数据标记自管。
@@ -159,10 +162,18 @@ data_write() { # 用随机名字建一个阅读列表
   name="wonton-smoke-$marker"
   out="$(dweb /api/readinglist/create -b "$(kavita_jar)" -H 'Content-Type: application/json' \
     -d "{\"title\":\"$name\"}")" || { echo "建阅读列表失败：$out"; return 1; }
+  # PR 版本装好后 SMTP 已配置：把管理员邮箱改成外部地址，模拟内部邮箱上线前装的实例里存的老值。
+  # 重装会重跑 init，它的一次性对账应把邮箱改回 WONTON_OWNER_EMAIL（data_check 核对）。
+  # tag 版本 SMTP 还没配，应用拿不到确认链接，这步跳过。
+  local settings
+  settings="$(dweb /api/settings -b "$(kavita_jar)")" || return 0
+  jq -e '.smtpConfig.host != ""' <<<"$settings" >/dev/null 2>&1 || return 0
+  kavita_dance "wonton-smoke-external@example.com" || return 1
+  echo "已把管理员邮箱改成外部地址，等重装后由 init 对账"
 }
 
-data_check() { # 升级/重装后重新走 OIDC，核对阅读列表还在
-  local marker lists
+data_check() { # 升级/重装后重新走 OIDC，核对阅读列表还在、账号邮箱是内部地址
+  local marker lists me want
   marker="$(cat "$(kavita_marker)" 2>/dev/null)"
   [[ -n "$marker" ]] || { echo "没有 data-write 留下的标记"; return 1; }
   kavita_session || return 1
@@ -170,4 +181,78 @@ data_check() { # 升级/重装后重新走 OIDC，核对阅读列表还在
     -H 'Content-Type: application/json' -d '{}')" || { echo "读阅读列表失败：$lists"; return 1; }
   jq -e --arg n "wonton-smoke-$marker" 'any(.[]; .title == $n)' <<<"$lists" >/dev/null ||
     { echo "阅读列表不见了：$(head -c 200 <<<"$lists")"; return 1; }
+  want="$(kavita_env_value WONTON_OWNER_EMAIL)"
+  me="$(dweb /api/account -b "$(kavita_jar)")" || { echo "读账号失败：$me"; return 1; }
+  jq -e --arg e "$want" '.email == $e' <<<"$me" >/dev/null ||
+    { echo "账号邮箱不是 $want（对账没跑或没跑对）：$(head -c 200 <<<"$me")"; return 1; }
+}
+
+# ---------- 邮件（notify）：init 把核心注入的发信写进 /api/settings，账号邮箱对齐成内部地址 ----------
+
+kavita_init_container() { # init 容器名：注入的姓名/密码/邮箱都在核心生成的密钥里
+  local n="wonton-${E2E_INSTANCE:-}--com-kavitareader-kavita--init"
+  docker inspect "$n" >/dev/null 2>&1 && { printf '%s' "$n"; return 0; }
+  docker ps -a --format '{{.Names}}' | grep -m1 'kavita.*init'
+}
+
+kavita_env_value() { # <变量名>：从 init 容器环境读核心注入的值
+  docker inspect "$(kavita_init_container)" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null |
+    sed -n "s/^$1=//p" | tail -1
+}
+
+kavita_dance() { # <目标地址>：走应用自己的改邮箱流程（update/email → resend 取确认链接 → confirm）。
+  # 管理员改他人邮箱的接口明确跳过本人，自助改邮箱又只认邮件里的确认链接；SMTP 已配置（IsEmailSetup
+  # 连 HostName 一起看）时 resend 会把链接放在响应里，这里取来替浏览器确认。改邮箱要账号密码。
+  local target="$1" jar pw me uid resp link tok
+  jar="$(kavita_jar)"
+  pw="$(kavita_env_value WONTON_SECRET_OWNER_PASSWORD)"
+  [[ -n "$pw" ]] || { echo "init 容器里读不到主人密码"; return 1; }
+  me="$(dweb /api/account -b "$jar")" || { echo "读当前账号失败：$me"; return 1; }
+  uid="$(jq -r '.id' <<<"$me")"
+  dweb /api/account/update/email -X POST -b "$jar" -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$target\",\"password\":\"$pw\"}" >/dev/null || { echo "申请改邮箱失败"; return 1; }
+  resp="$(dweb "/api/account/resend-confirmation-email?userId=$uid" -X POST -b "$jar")" ||
+    { echo "取确认链接失败：$resp"; return 1; }
+  link="$(jq -r '.emailLink // empty' <<<"$resp")"
+  [[ -n "$link" && "$link" != "null" ]] || { echo "没拿到确认链接：$resp"; return 1; }
+  tok="$(python3 -c 'import sys,urllib.parse as u;print(u.parse_qs(u.urlparse(sys.argv[1]).query)["token"][0])' "$link")"
+  dweb /api/account/confirm-email-update -X POST -H 'Content-Type: application/json' \
+    -d "{\"token\":\"$tok\",\"email\":\"$target\"}" >/dev/null || { echo "确认新邮箱失败"; return 1; }
+}
+
+extra_check() { # 邮件专项：配置是核心注入的值；测试信应用报成功；外部收件人在发送时被拒
+  local settings out hist me want
+  kavita_session || return 1
+  settings="$(dweb /api/settings -b "$(kavita_jar)")" || { echo "读不到服务器设置：$settings"; return 1; }
+  jq -e --arg from "com.kavitareader.kavita@plugins.wonton.internal" '
+    .smtpConfig.host == "smtp.wonton.internal" and .smtpConfig.port == 25
+    and .smtpConfig.senderAddress == $from and .smtpConfig.userName == ""
+    and .smtpConfig.enableSsl == false and .hostName != ""
+    and .oidcConfig.autoLogin == true' <<<"$settings" >/dev/null ||
+    { echo "SMTP 设置不是核心注入的值：$(head -c 300 <<<"$settings")"; return 1; }
+  echo "smtpConfig 是核心注入的值（不认证不加密），hostName/autoLogin 已设"
+  out="$(dweb /api/settings/test-email-url -X POST -b "$(kavita_jar)")" ||
+    { echo "测试信请求失败：$out"; return 1; }
+  jq -e '.successful == true' <<<"$out" >/dev/null || { echo "测试信没发出去：$out"; return 1; }
+  hist="$(dweb /api/email/all -b "$(kavita_jar)")" || { echo "读邮件历史失败：$hist"; return 1; }
+  jq -e '[.[] | select(.sent == true and (.emailTemplate | ascii_downcase | gsub("[^a-z]" ; "")) == "emailtest")] | length > 0' <<<"$hist" >/dev/null ||
+    { echo "邮件历史里没有成功的测试信：$hist"; return 1; }
+  echo "测试信应用报成功，邮件历史记了 Sent"
+  # 外部收件人：把管理员邮箱换成外部地址再发测试信，应用要报发送失败；然后原路改回内部地址
+  kavita_dance "wonton-smoke-external@example.com" || return 1
+  # 应用同步发信：失败会以 500 浮现（内含核心 550 拒收的 SMTP 细节），成功是 200+successful:false。
+  out="$(dweb /api/settings/test-email-url -X POST -b "$(kavita_jar)" 2>&1)" || true
+  if jq -e '.successful == false' <<<"$out" >/dev/null 2>&1; then
+    echo "发往外部地址应用报失败（服务器拒收）"
+  elif grep -qE "5\.1\.0|mailbox unavailable" <<<"$out"; then
+    echo "发往外部地址应用同步报失败（核心 SMTP 550 拒收浮现为 500）"
+  else
+    echo "发往外部地址竟然成功或响应异常：$(head -c 200 <<<"$out")"; return 1
+  fi
+  want="$(kavita_env_value WONTON_OWNER_EMAIL)"
+  kavita_dance "$want" || return 1
+  me="$(dweb /api/account -b "$(kavita_jar)")" || { echo "读账号失败：$me"; return 1; }
+  jq -e --arg e "$want" '.email == $e' <<<"$me" >/dev/null ||
+    { echo "改回内部地址后账号邮箱不对：$(head -c 200 <<<"$me")"; return 1; }
+  echo "账号邮箱已改回内部地址"
 }
