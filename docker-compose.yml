@@ -99,8 +99,7 @@ x-wonton:
 
       需要访问外网：检查更新、外部元数据和 Kavita+ 都要连出去，书库本身不受影响。
 
-      换核心时容器会按新的签发方自动重建。浏览器里的单点登录走不完回调，是已知问题，等核心修复
-      （https://github.com/wontonapp/wonton/issues/154），修好之前打不开。
+      云吞升级后会自动重新接好账号。目前在浏览器里打开会登录不进去，这是已知问题，修好之前暂时用不了（https://github.com/wontonapp/wonton/issues/154）。
     en: |
       Organize comics and e-books into libraries; the web reader remembers your page so you can pick up on the phone.
 
@@ -108,9 +107,7 @@ x-wonton:
 
       Needs internet access: update checks, external metadata and Kavita+ reach the network; your library works offline.
 
-      Containers are rebuilt with the new issuer when the core is upgraded. The browser sign-in can't finish
-      the callback — known issue, core-side fix tracked at https://github.com/wontonapp/wonton/issues/154; it
-      won't open until then.
+      After a Wonton upgrade, your account is reconnected automatically. For now, opening it in a browser won't sign you in — this is a known issue, and it won't be usable in the browser until it's fixed (https://github.com/wontonapp/wonton/issues/154).
   release_notes: { zh: 首个版本。, en: First release. }
   webui:
     service: kavita
