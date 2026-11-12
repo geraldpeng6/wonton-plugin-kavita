@@ -240,10 +240,15 @@ extra_check() { # 邮件专项：配置是核心注入的值；测试信应用�
   echo "测试信应用报成功，邮件历史记了 Sent"
   # 外部收件人：把管理员邮箱换成外部地址再发测试信，应用要报发送失败；然后原路改回内部地址
   kavita_dance "wonton-smoke-external@example.com" || return 1
-  out="$(dweb /api/settings/test-email-url -X POST -b "$(kavita_jar)")" ||
-    { echo "外部收件人的测试信请求失败：$out"; return 1; }
-  jq -e '.successful == false' <<<"$out" >/dev/null || { echo "发往外部地址竟然成功：$out"; return 1; }
-  echo "发往外部地址应用报失败（服务器拒收）"
+  # 应用同步发信：失败会以 500 浮现（内含核心 550 拒收的 SMTP 细节），成功是 200+successful:false。
+  out="$(dweb /api/settings/test-email-url -X POST -b "$(kavita_jar)" 2>&1)" || true
+  if jq -e '.successful == false' <<<"$out" >/dev/null 2>&1; then
+    echo "发往外部地址应用报失败（服务器拒收）"
+  elif grep -qE "5\.1\.0|mailbox unavailable" <<<"$out"; then
+    echo "发往外部地址应用同步报失败（核心 SMTP 550 拒收浮现为 500）"
+  else
+    echo "发往外部地址竟然成功或响应异常：$(head -c 200 <<<"$out")"; return 1
+  fi
   want="$(kavita_env_value WONTON_OWNER_EMAIL)"
   kavita_dance "$want" || return 1
   me="$(dweb /api/account -b "$(kavita_jar)")" || { echo "读账号失败：$me"; return 1; }
