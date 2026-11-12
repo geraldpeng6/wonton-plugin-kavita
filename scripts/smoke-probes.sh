@@ -235,7 +235,7 @@ extra_check() { # 邮件专项：配置是核心注入的值；测试信应用�
     { echo "测试信请求失败：$out"; return 1; }
   jq -e '.successful == true' <<<"$out" >/dev/null || { echo "测试信没发出去：$out"; return 1; }
   hist="$(dweb /api/email/all -b "$(kavita_jar)")" || { echo "读邮件历史失败：$hist"; return 1; }
-  jq -e '[.[] | select(.sent == true and (.emailTemplate | ascii_downcase) == "email-test")] | length > 0' <<<"$hist" >/dev/null ||
+  jq -e '[.[] | select(.sent == true and (.emailTemplate | ascii_downcase | gsub("[^a-z]" ; "")) == "emailtest")] | length > 0' <<<"$hist" >/dev/null ||
     { echo "邮件历史里没有成功的测试信：$hist"; return 1; }
   echo "测试信应用报成功，邮件历史记了 Sent"
   # 外部收件人：把管理员邮箱换成外部地址再发测试信，应用要报发送失败；然后原路改回内部地址
