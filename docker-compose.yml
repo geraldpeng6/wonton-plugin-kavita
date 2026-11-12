@@ -115,11 +115,11 @@ x-wonton:
     sso: oidc
     oidc:
       # Kavita 用 ASP.NET 的 OIDC 处理器，回调路径是固定的。
-      # 登出回跳 /signout-callback-oidc 依赖规范草案的 post_logout_paths，发布版核心还没收，
+      # 登出回跳 /signout-callback-oidc 依赖规范草案的 post_logout_paths，这里没声明，
       # Kavita 里点登出会被身份提供方拒绝；单点登录的会话由核心管，影响记在 PR 和 platform-gaps。
       # .NET 的 OIDC 处理器把客户端密钥放在令牌请求体里（client_secret_post），Hydra 默认只收 basic。
       # Kavita 认人要求 ID 令牌里有 email 声明，靠 seed 的 CustomScopes 要回 email scope；
-      # 规范还有 webui.oidc.requires_email（装前先要邮箱），发布版核心还没收这个字段，见 platform-gaps。
+      # 规范还有 webui.oidc.requires_email（装前先要邮箱），这里没声明，原因见 platform-gaps。
       redirect_paths: [/signin-oidc]
       token_endpoint_auth_method: client_secret_post
   secrets:
